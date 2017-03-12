@@ -5,9 +5,12 @@
 #include <twitcurl.h>
 #include <ncurses.h>
 #include <json/json.h>
+#include <locale.h>
+#include <pthread.h>
 
 using namespace std;
 
+twitCurl g_twitterObj_Stream;
 twitCurl g_twitterObj;
 
 string g_strConsumerKey       = "Brbukpk7aHle3rIbSlpTvvleU";
@@ -17,7 +20,24 @@ string g_strAccessTokenSecret = "nil";
 
 string g_strRequestTokenUrl;
 
-int streaming_callback_sample(char* ptr, size_t size, size_t nmemb, void* data) {
+WINDOW *g_winTimeLine;
+
+pthread_mutex_t g_objMutex;
+pthread_t g_objTid1;
+
+int g_intTerminalRow,g_intTerminalCol;
+
+int g_StreamFlag = 0;
+
+#define attrcol(f,b) (COLOR_PAIR((((f)<<3)|b)))
+
+void WriteStringColorTL(int f, char *s)
+{
+	wattrset(g_winTimeLine,COLOR_PAIR(f));
+	waddstr(g_winTimeLine,s);
+}
+
+int APIStreamingCallback(char* ptr, size_t size, size_t nmemb, void* data) {
 	if (size * nmemb == 0)
 		return 0;
 
@@ -32,26 +52,80 @@ int streaming_callback_sample(char* ptr, size_t size, size_t nmemb, void* data) 
 	
 	struct json_object *obj = json_tokener_parse(str);
 	
-	char *tweet_text,*tweeter_name;
-	
 	struct json_object *val = json_object_object_get(obj,"text");
 	if(val) {
-		tweet_text = json_object_get_string(val);
-		val = json_object_object_get(obj,"user");
-		tweeter_name = json_object_get_string(json_object_object_get(val,"name"));
+		char *text,*name,*screen_name;
 		
-		printf("NAME : %s\n%s\n\n",tweeter_name,tweet_text);
+		text = json_object_get_string(val);
+		val = json_object_object_get(obj,"user");
+		name = json_object_get_string(json_object_object_get(val,"name"));
+		screen_name = json_object_get_string(json_object_object_get(val,"screen_name"));
+		
+		WriteStringColorTL(COLOR_GREEN,name);
+		WriteStringColorTL(COLOR_WHITE," ");
+		WriteStringColorTL(COLOR_CYAN,"@");
+		WriteStringColorTL(COLOR_CYAN,screen_name);
+		WriteStringColorTL(COLOR_WHITE,"\n");
+		WriteStringColorTL(COLOR_WHITE,text);
+		WriteStringColorTL(COLOR_WHITE,"\n");
+		WriteStringColorTL(COLOR_WHITE,"\n");
+		
+		wrefresh(g_winTimeLine);
+		refresh();
 	}
 
-	//fprintf(stderr, "RECIEVED: %ld bytes\n", realsize);
-	//fprintf(stderr, "[STREAMING API] received -> %s\n", str);
-
 	return realsize;
+}
+
+int wkbhit(WINDOW *win)
+{
+	int ch = wgetch(win);
+
+	if (ch != ERR) {
+		ungetch(ch);
+		return 1;
+	} else {
+		return 0;
+	}
+}
+
+void ExecCommnad(WINDOW *win, int ch)
+{
+	if(ch == 't') {
+		mvwaddstr(win,0,0,"ツイートモード\n");
+		char tweet[512];
+		wmove(win,1,1);
+		waddch(win,' ');
+		waddch(win,'\b');
+		wrefresh(win);
+		wgetstr(win,tweet);
+		g_twitterObj.statusUpdate(tweet);
+		wclear(win);
+		mvwaddstr(win,0,0,"t:ツイートモード\n");
+		waddstr(win,":");
+		wrefresh(win);
+	}
+}
+
+void* CommandThread(void* pParam)
+{
+	WINDOW *win = (WINDOW *)pParam;
+	
+	mvwaddstr(win,0,0,"t:ツイート\n");
+	waddstr(win,":");
+	
+	while(1) {
+		wmove(win,1,1);
+		wrefresh(win);
+		if(wkbhit(win)) ExecCommnad(win, wgetch(win));
+	}
 }
 
 int main() {
 	g_twitterObj.getOAuth().setConsumerKey(g_strConsumerKey);
 	g_twitterObj.getOAuth().setConsumerSecret(g_strConsumerSecret);
+	
+	string token,tokensecret;
 	
 	// PINとかそのへんの処理
 	{
@@ -73,8 +147,6 @@ int main() {
 				
 				g_twitterObj.getOAuth().setOAuthPin(PIN);
 				
-				string token,tokensecret;
-				
 				isValidPIN = g_twitterObj.oAuthAccessToken();
 				
 				if(isValidPIN) {
@@ -90,8 +162,6 @@ int main() {
 				}
 			}
 		} else {
-			string token,tokensecret;
-			
 			tokenfile >> token;
 			tokenfile >> tokensecret;
 			
@@ -100,41 +170,37 @@ int main() {
 		}
 	}
 	
-	g_twitterObj.timelineHomeGetStream(streaming_callback_sample);
+	g_twitterObj_Stream.getOAuth().setConsumerKey(g_strConsumerKey);
+	g_twitterObj_Stream.getOAuth().setConsumerSecret(g_strConsumerSecret);
+	g_twitterObj_Stream.getOAuth().setOAuthTokenKey(token);
+	g_twitterObj_Stream.getOAuth().setOAuthTokenSecret(tokensecret);
 	
-	//initscr();
+	// TLを流す
+	setlocale(LC_ALL, "");
 	
-	/*
-	auto start = std::chrono::system_clock::now();
+	initscr();
+	getmaxyx(stdscr,g_intTerminalRow,g_intTerminalCol);
 	
-	while(1) {
-		auto end = std::chrono::system_clock::now();
-		auto diff = end - start;
-		int etime = std::chrono::duration_cast<std::chrono::milliseconds>(diff).count();
-		
-		if(etime > 1000) {
-			start = std::chrono::system_clock::now();
-			
-			g_twitterObj.timelineHomeGet();
-			
-			string json;
-			
-			g_twitterObj.getLastWebResponse(json);
-			
-			//priintw(json);
-			
-			json = "{\"timeline_array\":" + json + "}";
-			
-			if(json.length()) {
-				//cout << json.c_str() << endl;
-				
-				struct json_object *jobj_from_string = json_tokener_parse(json.c_str());
-				libjson_parse_check_type(jobj_from_string);
-			}
-		}
+	start_color();
+	for(int i = 0; i < 8; i++) {
+		init_pair(i, i, COLOR_BLACK);
 	}
-	*/
-	//endwin();
+	
+	g_winTimeLine = newwin(g_intTerminalRow - 3, g_intTerminalCol, 1, 0);
+	scrollok(g_winTimeLine, TRUE);
+	
+	mvaddstr(0,0,"--- nanotter alpha-0.1 ---\n");
+	refresh();
+	
+	//WriteStringColorTL(COLOR_CYAN,"ようこそnanotterへ！\n");
+	//wrefresh(g_winTimeLine);
+	
+	pthread_create(&g_objTid1, NULL, CommandThread, 
+		newwin(2, g_intTerminalCol, g_intTerminalRow - 2, 0));
+	
+	g_twitterObj_Stream.timelineHomeGetStream(APIStreamingCallback);
+	
+	endwin();
 	
 	return 0;
 }
