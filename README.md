@@ -7,10 +7,9 @@ Power for ておくれ。
 そのうちluaプラグイン実装します。  
 
 ##必須ライブラリ
-OpenSSL  
-libcurlw  
+libncursesw  
 libjson  
-libcurl  
+libcurl-ssl  
 
 ##ビルド時の注意
 twitcurlは付属のものを使ってください。
