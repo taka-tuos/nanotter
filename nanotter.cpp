@@ -106,6 +106,8 @@ char *tuiFloatMessageBox(const char *title, const char *text, int reqinput)
 	delwin(win);
 	delwin(wid);
 	
+	wrefresh(g_winTimeLine);
+	
 	return req;
 }
 
@@ -137,6 +139,8 @@ char *tuiFullMessageBox(const char *title, const char *text, int reqinput)
 	wclear(win);
 	wrefresh(win);
 	delwin(win);
+	
+	wrefresh(g_winTimeLine);
 	
 	return req;
 }

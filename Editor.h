@@ -28,7 +28,6 @@ private:
 
 public:
 	string saved;
-	int subx;
 
 	Editor(WINDOW *);                           // Normal constructor
 

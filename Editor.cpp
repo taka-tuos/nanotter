@@ -149,13 +149,6 @@ void Editor::handleInput(int c)
 		default:
 			// Any other character
 			buff->lines[y].insert(x, 1, char(c));
-			int oldsubx = 0;
-			if(c >= 0x00 && c <= 0x7f) subx = 0;
-			if(c >= 0xc2 && c <= 0xdf) subx = 1;
-			if(c >= 0xe0 && c <= 0xef) subx = 2;
-			if(c >= 0xf0 && c <= 0xf7) subx = 3;
-			if(c >= 0xf8 && c <= 0xfb) subx = 4;
-			if(c >= 0xfc && c <= 0xfd) subx = 5;
 			x++;
 			break;
 		}
